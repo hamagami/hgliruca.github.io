@@ -1,0 +1,141 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>在席・研修中ステータス表示</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    #user-select {
+      margin-bottom: 20px;
+      padding: 6px 10px;
+      font-size: 16px;
+    }
+    .chart-box {
+      margin-bottom: 50px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>ユーザー別ステータス履歴</h2>
+  <label for="user-select">ユーザー選択: </label>
+  <select id="user-select"></select>
+  <div id="user-chart" class="chart-box"></div>
+
+  <h2>各時刻における在席中・研修中人数</h2>
+  <div id="summary-chart" class="chart-box"></div>
+
+  <script>
+    const userSelect = document.getElementById("user-select");
+    const userChart = document.getElementById("user-chart");
+    const summaryChart = document.getElementById("summary-chart");
+
+    let userData = {};
+    let summaryData = {};
+
+    // JSONファイルの読み込み
+    Promise.all([
+      fetch("https://dl.dropbox.com/scl/fi/girmoxy2s2dux8nofm9ag/user_status_history.json?rlkey=x83sx287jj93uuukunm2bph0f&dl=1").then(res => res.json()),
+      fetch("https://dl.dropbox.com/scl/fi/mc32neviwl1vydbx8c4nd/status_summary_by_time.json?rlkey=31aylckuac30jfws0l1o4y70m&dl=1").then(res => res.json())
+    ]).then(([userJson, summaryJson]) => {
+      userData = userJson;
+      summaryData = summaryJson;
+      populateUserSelect();
+      plotSummaryChart();
+    });
+
+    // プルダウンにユーザー追加
+    function populateUserSelect() {
+      const users = Object.keys(userData).sort();
+      users.forEach(name => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        userSelect.appendChild(option);
+      });
+      userSelect.addEventListener("change", () => {
+        plotUserChart(userSelect.value);
+      });
+      plotUserChart(users[0]); // 初期表示
+    }
+
+    // ユーザーのステータス履歴を描画（時系列を実時間スケールに）
+    function plotUserChart(user) {
+      const data = userData[user];
+      const timestamps = data.map(entry => entry.timestamp);
+      const status = data.map(entry => entry.status === "在席中" ? 1 : 0);
+      const colors = data.map(entry => entry.status === "在席中" ? "blue" : "orange");
+
+      const trace = {
+        x: timestamps,
+        y: status,
+        mode: "markers",
+        type: "scatter",
+        marker: { color: colors, size: 10 },
+        text: data.map(entry => entry.status),
+        hoverinfo: "x+text"
+      };
+
+      const layout = {
+        title: `${user} のステータス履歴`,
+        xaxis: {
+          title: "時刻",
+          type: "date",
+          tickformat: "%m/%d %H:%M"
+        },
+        yaxis: {
+          title: "ステータス",
+          tickvals: [0, 1],
+          ticktext: ["研修中", "在席中"],
+          range: [-0.5, 1.5]
+        }
+      };
+
+      Plotly.newPlot(userChart, [trace], layout);
+    }
+
+    // 各時刻の人数合計（在席中・研修中）を折れ線グラフに
+    function plotSummaryChart() {
+      const timestamps = Object.keys(summaryData).sort();
+      const zai = timestamps.map(t => summaryData[t]["在席中"]);
+      const ken = timestamps.map(t => summaryData[t]["研修中"]);
+
+      const trace1 = {
+        x: timestamps,
+        y: zai,
+        mode: "lines+markers",
+        name: "在席中",
+        line: { shape: "linear" }
+      };
+
+      const trace2 = {
+        x: timestamps,
+        y: ken,
+        mode: "lines+markers",
+        name: "研修中",
+        line: { shape: "linear" }
+      };
+
+      const layout = {
+        title: "在席中・研修中人数の推移",
+        xaxis: {
+          title: "時刻",
+          type: "date",
+          tickformat: "%m/%d %H:%M"
+        },
+        yaxis: {
+          title: "人数",
+          rangemode: "tozero"
+        }
+      };
+
+      Plotly.newPlot(summaryChart, [trace1, trace2], layout);
+    }
+  </script>
+</body>
+</html>
